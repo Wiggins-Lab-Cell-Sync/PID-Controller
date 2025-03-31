@@ -3,11 +3,11 @@ clear all;
 %% Check your current ports and define arduino port
 portList = serialportlist;
 %%
-port = "/dev/cu.usbmodem21201";%"/dev/cu.usbmodem1201"; % typical cu.usbmodem11201
-port = "/dev/cu.usbmodem1201";
-port = "/dev/cu.usbmodem2101";
+% port = "/dev/cu.usbmodem21201";%"/dev/cu.usbmodem1201"; % typical cu.usbmodem11201
+% port = "/dev/cu.usbmodem1201";
+% port = "/dev/cu.usbmodem2101";
 port = "/dev/cu.usbmodem101";
-port = "/dev/cu.usbmodem1101";
+% port = "/dev/cu.usbmodem1101";
 
 potPort = portList(contains(portList, "usbmodem"));
 arduinoPort = serialport(potPort(1), 9600);
