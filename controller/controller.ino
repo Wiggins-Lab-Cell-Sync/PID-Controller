@@ -34,12 +34,12 @@ float PID_OUT(struct Controller* self, float temp, float set_point){
 float read_temp(){
   float v = analogRead(A0) * (5 / 1024.0);
   
-  float res = ((5 - v) * 90000) / v; // solved for R1 in voltage divider.
+  float res = ((5 - v) * 7500) / v; // solved for R1 in voltage divider.
 
   float TA = 25;//c
   float TB = 35;//c
-  float RA = 100000;//ohm
-  float RB = 65000;//ohm
+  float RA = 10000;//ohm
+  float RB = 6522;//ohm
 
   float B = log(RA / RB) * (1 / ((1 / TA) - (1 / TB)));
 
@@ -65,7 +65,7 @@ void printState(int TimeStamp, float CurrentTemp, float TargetTemp, float PIDOut
 
 
 struct Controller stabilizer = (struct Controller){
-  .P = 50,
+  .P = 20,
   .I = 1,
   .D = 0,
 
@@ -93,6 +93,7 @@ void on_second(){
   
   
   float output = stabilizer.output(&stabilizer, temp, set_point);
+  output = 0;
 
   digitalWrite(9, (output > 0) ? LOW : HIGH);
   analogWrite(10, min(150, abs(output)));
