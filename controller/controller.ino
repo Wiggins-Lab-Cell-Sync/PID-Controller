@@ -6,6 +6,7 @@ struct Controller{
   float D;
 
   float last_error;
+  float last_temp;
   float sum_error;
   
   float (*output)(struct Controller*, float, float); // (this, temp, setpoint) -> output
@@ -24,9 +25,14 @@ float PID_OUT(struct Controller* self, float temp, float set_point){
   if(abs(error) > 5){
     self->sum_error = 0;
   }
+
+  // if(self->last_error * error < 0 && abs(self->last_error - temp) > 0.2){ // opposite signs
+  //   self->sum_error = 0;
+  // }
   
   float out = (self->P * error) + self->sum_error + (self->D * (error - self->last_error));
   self->last_error = error;
+  self->last_temp = temp;
   return out;
 }
 
@@ -65,11 +71,12 @@ void printState(int TimeStamp, float CurrentTemp, float TargetTemp, float PIDOut
 
 
 struct Controller stabilizer = (struct Controller){
-  .P = 20,
+  .P = 10,
   .I = 1,
   .D = 0,
 
   .last_error = 0,
+  .last_temp = 0,
   .sum_error = 0,
 
   .output = &PID_OUT
@@ -77,7 +84,7 @@ struct Controller stabilizer = (struct Controller){
 
 
 
-float set_point = 30;
+float set_point = 42;
 float temp_sum = 0;
 
 
@@ -93,7 +100,6 @@ void on_second(){
   
   
   float output = stabilizer.output(&stabilizer, temp, set_point);
-  output = 0;
 
   digitalWrite(9, (output > 0) ? LOW : HIGH);
   analogWrite(10, min(150, abs(output)));
