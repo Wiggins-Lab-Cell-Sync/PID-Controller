@@ -11,7 +11,7 @@ port = "/dev/cu.usbmodem101";
 
 potPort = portList(contains(portList, "usbmodem"));
 arduinoPort = serialport(potPort(1), 9600);
-pause(5)
+pause(1)
 %%
 arduinoPort.InputBufferSize = 1024;
 configureTerminator(arduinoPort, "CR/LF");
@@ -28,7 +28,17 @@ btn = uicontrol('Style', 'pushbutton', ...
     'Position', [20 20 50 30], ...
     'Callback', 'delete(gcbf)');
 
-% Initialize data
+% Add input box and send button to existing UI
+targetEdit = uicontrol('Style','edit','Position',[100 20 60 30]);
+
+sendBtn = uicontrol('Style','pushbutton','String','Set Target',...
+    'Position',[170 20 70 30],...
+    'Callback',@(src,event) sendTargetCallback);
+
+set(fig, 'UserData', struct(...
+    'targetEdit', targetEdit, ...
+    'arduinoPort', arduinoPort));
+%% Initialize data
 d = getValues(readline(arduinoPort));
 time = datetime;
 t = d(1)/1000/60;
@@ -128,4 +138,17 @@ function d = getValues(str)
 tmp =  split(str," ");
 d = str2double(tmp(1:end-1,1));
 d(end+1) = tmp(end) == "H";
+end
+
+function sendTargetCallback(~,~)
+    % Retrieve stored handles
+    ud = get(gcbf, 'UserData');  % gcbf = get current callback figure
+    targetTemp = str2double(get(ud.targetEdit, 'String'));
+    
+    if ~isnan(targetTemp)
+        configureTerminator(ud.arduinoPort, "CR/LF");
+        %write(ud.arduinoPort, uint8(targetTemp),"char");
+        writeline(ud.arduinoPort, num2str(targetTemp));
+        disp(['Sent new target: ' num2str(targetTemp)]);
+    end
 end

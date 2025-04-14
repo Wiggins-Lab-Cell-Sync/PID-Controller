@@ -1,4 +1,4 @@
-
+#include <avr/pgmspace.h>
 
 struct Controller{
   float P;
@@ -45,14 +45,14 @@ float PID_OUT(struct Controller* self, float temp, float set_point){
 
 
 float read_temp(){
-  float v = analogRead(A0) * (5 / 1024.0);
+  float v = analogRead(A0) * (5.11 / 1024.0);
   
-  float res = ((5 - v) * 7500) / v; // solved for R1 in voltage divider.
+  float res = ((5.11 - v) * 7400) / v; // solved for R1 in voltage divider.
 
-  float TA = 25;//c
-  float TB = 35;//c
-  float RA = 10000;//ohm
-  float RB = 6522;//ohm
+  float TA = 22.6;//c
+  float TB = 45.2;//c
+  float RA = 10880;//ohm
+  float RB = 4390;//ohm
 
   float B = log(RA / RB) * (1 / ((1 / TA) - (1 / TB)));
 
@@ -99,6 +99,32 @@ struct Controller stabilizer = (struct Controller){
 float set_point = 30;
 float temp_sum = 0;
 
+// LUT for temperture. Use matlab to generate the table. 
+const PROGMEM double lookupTable[] = {
+    30.00, 30.00, 30.01, 30.03, 30.05, 30.07, 30.11, 30.15, 30.19, 30.24,
+    30.30, 30.36, 30.43, 30.50, 30.58, 30.66, 30.75, 30.84, 30.94, 31.05,
+    31.16, 31.27, 31.39, 31.51, 31.64, 31.77, 31.91, 32.05, 32.20, 32.34,
+    32.50, 32.65, 32.81, 32.97, 33.14, 33.31, 33.48, 33.65, 33.82, 34.00,
+    34.18, 34.36, 34.55, 34.73, 34.92, 35.10, 35.29, 35.48, 35.67, 35.86,
+    36.05, 36.24, 36.43, 36.61, 36.80, 36.99, 37.18, 37.36, 37.55, 37.73,
+    37.91, 38.09, 38.26, 38.44, 38.61, 38.78, 38.95, 39.11, 39.27, 39.43,
+    39.58, 39.73, 39.88, 40.02, 40.16, 40.29, 40.42, 40.55, 40.67, 40.79,
+    40.90, 41.01, 41.11, 41.20, 41.30, 41.38, 41.46, 41.54, 41.61, 41.67,
+    41.73, 41.79, 41.83, 41.87, 41.91, 41.94, 41.96, 41.98, 41.99, 42.00,
+    42.00, 41.99, 41.98, 41.96, 41.94, 41.91, 41.87, 41.83, 41.79, 41.73,
+    41.67, 41.61, 41.54, 41.46, 41.38, 41.30, 41.20, 41.11, 41.01, 40.90,
+    40.79, 40.67, 40.55, 40.42, 40.29, 40.16, 40.02, 39.88, 39.73, 39.58,
+    39.43, 39.27, 39.11, 38.95, 38.78, 38.61, 38.44, 38.26, 38.09, 37.91,
+    37.73, 37.55, 37.36, 37.18, 36.99, 36.80, 36.61, 36.43, 36.24, 36.05,
+    35.86, 35.67, 35.48, 35.29, 35.10, 34.92, 34.73, 34.55, 34.36, 34.18,
+    34.00, 33.82, 33.65, 33.48, 33.31, 33.14, 32.97, 32.81, 32.65, 32.50,
+    32.34, 32.20, 32.05, 31.91, 31.77, 31.64, 31.51, 31.39, 31.27, 31.16,
+    31.05, 30.94, 30.84, 30.75, 30.66, 30.58, 30.50, 30.43, 30.36, 30.30,
+    30.24, 30.19, 30.15, 30.11, 30.07, 30.05, 30.03, 30.01, 30.00, 30.00
+};
+const int dt = 3;  // Time interval between the LUT. In terms of seconds
+const unsigned long period = dt*sizeof(lookupTable) / sizeof(lookupTable[0]); //In seconds
+const unsigned long StartTime = 0;
 // ----------
 
 void setup() {
@@ -110,14 +136,14 @@ void setup() {
 //---------------------------------------------------------
 unsigned long TimeStamp = 0; // time since start in seconds, used only for printing state
 unsigned long prgm_count = 0;
-unsigned long NextTime = 1;
+unsigned long NextTime = 1000;
 
 void loop() {
   TimeStamp = millis();
 
-  if(TimeStamp > NextTime*1000){
+  if(TimeStamp > NextTime){
     on_second();
-    NextTime = NextTime + 1; // Update for the next read time
+    NextTime = NextTime + 1000; // Update for the next read time
     prgm_count = 0;
   }
   
@@ -130,21 +156,22 @@ void on_second(){
   float temp = temp_sum / prgm_count;
   temp_sum = 0;
 
-  while(Serial.available()){
-    set_point = Serial.parseInt();
-    Serial.readStringUntil('\n');
-  }
-  
-  
+  update_target();
   float output = stabilizer.output(&stabilizer, temp, set_point);
-
   digitalWrite(9, (output > 0) ? LOW : HIGH);
   analogWrite(10, min(150, abs(output)));
-  //analogWrite(10, 30);
 
 
   printState(TimeStamp, temp, set_point, output);
   TimeStamp++;
+}
+
+//------
+void update_target(){
+  unsigned long TimeDiff = (TimeStamp)/1000;
+  unsigned long rem = TimeDiff % period;
+  unsigned int quo = rem / dt;
+  set_point = pgm_read_float(&lookupTable[quo]);
 }
 
 //---------------------------------------------------------
