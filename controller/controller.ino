@@ -110,7 +110,7 @@ void setup() {
 //---------------------------------------------------------
 unsigned long TimeStamp = 0; // time since start in seconds, used only for printing state
 unsigned long prgm_count = 0;
-unsigned long NextTime = 1;
+unsigned long NextTime = 1000;
 
 void loop() {
   TimeStamp = millis();
