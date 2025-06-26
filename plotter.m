@@ -2,23 +2,18 @@
 clear all;
 %% Check your current ports and define arduino port
 portList = serialportlist;
-%%
-% port = "/dev/cu.usbmodem21201";%"/dev/cu.usbmodem1201"; % typical cu.usbmodem11201
-% port = "/dev/cu.usbmodem1201";
-% port = "/dev/cu.usbmodem2101";
-port = "/dev/cu.usbmodem101";
-% port = "/dev/cu.usbmodem1101";
+%% Find port and establish connection
 
 potPort = portList(contains(portList, "usbmodem"));
 arduinoPort = serialport(potPort(1), 9600);
 pause(1)
-%%
+%% Configure
 arduinoPort.InputBufferSize = 1024;
 configureTerminator(arduinoPort, "CR/LF");
 fopen(arduinoPort);
 
 
-%%
+%% Setup UI
 % Create figure window
 fig = figure(1);
 clf
@@ -38,15 +33,16 @@ sendBtn = uicontrol('Style','pushbutton','String','Set Target',...
 set(fig, 'UserData', struct(...
     'targetEdit', targetEdit, ...
     'arduinoPort', arduinoPort));
+
 %% Initialize data
 d = getValues(readline(arduinoPort));
 time = datetime;
 t = d(1)/1000/60;
 T_c = d(2);
-T_t = d(3);
+T_t = d(3);0
 output = d(4);
 isH = d(5);
-
+filename = "4_24_dnaC.csv";%"4_23_dnaC2_1181.csv";
 subplot(3,1,1);
 % Plot handle for target Temp
 trgt_handle = plot(t, T_t);
@@ -58,7 +54,6 @@ curr_handle = plot(t, T_c);
 
 curr_point = text(t, T_c, num2str( T_c));
 trgt_point = text(t, T_t, num2str( T_t));
-
 
 
 lgd = legend(["Target", "Current"], 'Location','northwest');
@@ -118,6 +113,21 @@ while ~stop_plotting
         drawnow
         disp(r);
         % Small pause to control update rate
+        
+        if isstring(filename)
+            datatable = table(time(end)', t(end)', T_c(end)', T_t(end)', isH(end)', ...
+                'VariableNames', {'Read_time','Time', 'T_c', 'T_t', 'Is_Heating'});
+            writetable(datatable,filename, 'WriteMode','append');
+        end
+
+        if size(t,2) > 8000
+            time = time(2:end);
+            t = t(2:end);
+            T_c = T_c(2:end);
+            T_t = T_t(2:end);
+            isH = isH(2:end);
+            output = output(2:end);
+        end
     catch
         data = table(time', t', T_c', T_t', isH', 'VariableNames', {'Read_time','Time', 'T_c', 'T_t', 'Is_Heating'});
         % Break loop if figure is closed

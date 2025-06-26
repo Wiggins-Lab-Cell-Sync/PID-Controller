@@ -2,11 +2,11 @@
 %     42*ones(1,40) ...   %37 degrees for 35 min
 %     30*ones(1,35)    %30 degrees for 25 min
 %     ];
-% % Convert to uint8
-% temp = uint8(temp);
+% Convert to uint8
+%temp = uint8(temp);
 
-t = linspace(0,2*pi,200);
-temp = cos(t-pi)*(42-30)/2+(42+30)/2 ;
+t = linspace(-pi/2,pi/2,30);
+temp = [ones(1,110)*30, sin(t)*(38-30)/2+34 , ones(1,40)*38];
 
 % Format the string
 formatted_string = 'const PROGMEM double lookupTable[] = {\n';

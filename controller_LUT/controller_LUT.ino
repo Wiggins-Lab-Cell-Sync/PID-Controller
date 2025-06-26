@@ -21,9 +21,9 @@ float PID_OUT(struct Controller* self, float temp, float set_point){
 
   self->sum_error = self->sum_error + abs(error/1.5)* abs( error/1.5) * error/1.5 * exp(-error*error*3/1.5)*14; //* exp( error/abs(error) * bias_err );
   if(self->sum_error > 0){
-    self->sum_error = min(200, self->sum_error);
+    self->sum_error = min(20, self->sum_error);
   }else{
-    self->sum_error = max(-200, self->sum_error);
+    self->sum_error = max(-20, self->sum_error);
   }
   
   float out_P = self->P * ( abs(error) * error + error * 5) + self->M * temp + self->C;
@@ -45,14 +45,12 @@ float PID_OUT(struct Controller* self, float temp, float set_point){
 
 
 float read_temp(){
-  float v = analogRead(A0) * (5.11 / 1024.0);
-  
-  float res = ((5.11 - v) * 7400) / v; // solved for R1 in voltage divider.
-
-  float TA = 22.6;//c
-  float TB = 45.2;//c
-  float RA = 10880;//ohm
-  float RB = 4390;//ohm
+  float v = analogRead(A0) * (5.13 / 1024.0);
+  float res = ((5.13 - v) * 7400) / v; // solved for R1 in voltage divider.
+  float TA = 24.;//c
+  float TB = 45.5;//c
+  float RA = 10260;//ohm
+  float RB = 4240;//ohm
 
   float B = log(RA / RB) * (1 / ((1 / TA) - (1 / TB)));
 
@@ -67,7 +65,7 @@ void printState(unsigned long TimeStamp, float CurrentTemp, float TargetTemp, fl
   Serial.print(" ");
   Serial.print(TargetTemp);
   Serial.print(" ");
-  Serial.print( min(150, abs(PIDOutput)) * abs(PIDOutput)/PIDOutput);
+  Serial.print( PIDOutput);
   Serial.print(" ");
   if (PIDOutput > 0) {
     Serial.println("H");
@@ -78,7 +76,7 @@ void printState(unsigned long TimeStamp, float CurrentTemp, float TargetTemp, fl
 
 
 struct Controller stabilizer = (struct Controller){
-  .P = 1.5,
+  .P = 2.0,
   .I = 0.1,
   .D = 300,
 
@@ -88,8 +86,8 @@ struct Controller stabilizer = (struct Controller){
 
   // OUTPUT = M * (Temp) + C 
   // Numbers are obtained by fitting temperature vs output data
-  .M = 2.161,
-  .C = -45.59,
+  .M = 2.31,
+  .C = -46.35,
 
   .output = &PID_OUT
 };
@@ -98,31 +96,32 @@ struct Controller stabilizer = (struct Controller){
 
 float set_point = 30;
 float temp_sum = 0;
+bool isSafe = true;
+unsigned int counter = 0;
 
 // LUT for temperture. Use matlab to generate the table. 
 const PROGMEM double lookupTable[] = {
-    30.00, 30.00, 30.01, 30.03, 30.05, 30.07, 30.11, 30.15, 30.19, 30.24,
-    30.30, 30.36, 30.43, 30.50, 30.58, 30.66, 30.75, 30.84, 30.94, 31.05,
-    31.16, 31.27, 31.39, 31.51, 31.64, 31.77, 31.91, 32.05, 32.20, 32.34,
-    32.50, 32.65, 32.81, 32.97, 33.14, 33.31, 33.48, 33.65, 33.82, 34.00,
-    34.18, 34.36, 34.55, 34.73, 34.92, 35.10, 35.29, 35.48, 35.67, 35.86,
-    36.05, 36.24, 36.43, 36.61, 36.80, 36.99, 37.18, 37.36, 37.55, 37.73,
-    37.91, 38.09, 38.26, 38.44, 38.61, 38.78, 38.95, 39.11, 39.27, 39.43,
-    39.58, 39.73, 39.88, 40.02, 40.16, 40.29, 40.42, 40.55, 40.67, 40.79,
-    40.90, 41.01, 41.11, 41.20, 41.30, 41.38, 41.46, 41.54, 41.61, 41.67,
-    41.73, 41.79, 41.83, 41.87, 41.91, 41.94, 41.96, 41.98, 41.99, 42.00,
-    42.00, 41.99, 41.98, 41.96, 41.94, 41.91, 41.87, 41.83, 41.79, 41.73,
-    41.67, 41.61, 41.54, 41.46, 41.38, 41.30, 41.20, 41.11, 41.01, 40.90,
-    40.79, 40.67, 40.55, 40.42, 40.29, 40.16, 40.02, 39.88, 39.73, 39.58,
-    39.43, 39.27, 39.11, 38.95, 38.78, 38.61, 38.44, 38.26, 38.09, 37.91,
-    37.73, 37.55, 37.36, 37.18, 36.99, 36.80, 36.61, 36.43, 36.24, 36.05,
-    35.86, 35.67, 35.48, 35.29, 35.10, 34.92, 34.73, 34.55, 34.36, 34.18,
-    34.00, 33.82, 33.65, 33.48, 33.31, 33.14, 32.97, 32.81, 32.65, 32.50,
-    32.34, 32.20, 32.05, 31.91, 31.77, 31.64, 31.51, 31.39, 31.27, 31.16,
-    31.05, 30.94, 30.84, 30.75, 30.66, 30.58, 30.50, 30.43, 30.36, 30.30,
-    30.24, 30.19, 30.15, 30.11, 30.07, 30.05, 30.03, 30.01, 30.00, 30.00
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00, 30.00,
+    30.00, 30.02, 30.09, 30.21, 30.37, 30.57, 30.82, 31.10, 31.41, 31.76,
+    32.13, 32.52, 32.93, 33.35, 33.78, 34.22, 34.65, 35.07, 35.48, 35.87,
+    36.24, 36.59, 36.90, 37.18, 37.43, 37.63, 37.79, 37.91, 37.98, 38.00,
+    38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00,
+    38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00,
+    38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00,
+    38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00, 38.00
 };
-const int dt = 3;  // Time interval between the LUT. In terms of seconds
+
+const int dt = 30;  // Time interval between the LUT. In terms of seconds
 const unsigned long period = dt*sizeof(lookupTable) / sizeof(lookupTable[0]); //In seconds
 const unsigned long StartTime = 0;
 // ----------
@@ -153,15 +152,37 @@ void loop() {
 }
 
 void on_second(){
+
   float temp = temp_sum / prgm_count;
   temp_sum = 0;
 
-  update_target();
+  // update_target();
+  
   float output = stabilizer.output(&stabilizer, temp, set_point);
+
+  // If the output is continuously higher than 80 or lower than -80 than somethings wrong
+  if (abs( output) > 80) {
+    counter++;
+  } else {
+    counter = 0;
+  }
+
+  // If something goes wrong isSafe = false
+  if (Serial.availableForWrite() < 35 || counter > 400){
+    isSafe = false;
+  }
+
+  if (isSafe){
+    if (output > 0) {
+      output = min(150, output);
+    } else {
+      output = max(-150, output);
+    }
+  } else { // If something goes wrong, set the output to 0
+    output = 0;
+  }
   digitalWrite(9, (output > 0) ? LOW : HIGH);
-  analogWrite(10, min(150, abs(output)));
-
-
+  analogWrite(10, abs(output));
   printState(TimeStamp, temp, set_point, output);
   TimeStamp++;
 }
@@ -179,4 +200,5 @@ void update_target(){
 void on_centisecond(){
   temp_sum += read_temp();
 }
+
 
