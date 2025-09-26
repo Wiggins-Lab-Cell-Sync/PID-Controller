@@ -1,0 +1,164 @@
+% This is a program to control the temperture using the peltier
+clear all;
+%% Check your current ports and define arduino port
+portList = serialportlist;
+%% Find port and establish connection
+
+potPort = portList(contains(portList, "usbmodem"));
+arduinoPort = serialport(potPort(1), 9600);
+pause(1)
+%% Configure
+arduinoPort.InputBufferSize = 1024;
+configureTerminator(arduinoPort, "CR/LF");
+fopen(arduinoPort);
+
+
+%% Setup UI
+% Create figure window
+fig = figure(1);
+clf
+% Create UI button
+btn = uicontrol('Style', 'pushbutton', ...
+    'String', 'Stop', ...
+    'Position', [20 20 50 30], ...
+    'Callback', 'delete(gcbf)');
+
+% Add input box and send button to existing UI
+targetEdit = uicontrol('Style','edit','Position',[100 20 60 30]);
+
+sendBtn = uicontrol('Style','pushbutton','String','Set Target',...
+    'Position',[170 20 70 30],...
+    'Callback',@(src,event) sendTargetCallback);
+
+set(fig, 'UserData', struct(...
+    'targetEdit', targetEdit, ...
+    'arduinoPort', arduinoPort));
+
+%% Initialize data
+d = getValues(readline(arduinoPort));
+time = datetime;
+t = d(1)/1000/60;
+T_c = d(2);
+T_t = d(3);0
+output = d(4);
+isH = d(5);
+filename = "4_24_dnaC.csv";%"4_23_dnaC2_1181.csv";
+subplot(3,1,1);
+% Plot handle for target Temp
+trgt_handle = plot(t, T_t);
+hold on
+
+% Plot handle for current Temp
+curr_handle = plot(t, T_c);
+
+
+curr_point = text(t, T_c, num2str( T_c));
+trgt_point = text(t, T_t, num2str( T_t));
+
+
+lgd = legend(["Target", "Current"], 'Location','northwest');
+xlabel('Time(min)');
+ylabel('Temperatures');
+title('Live Updating Plot');
+
+subplot(3,1,2);
+diff_handle = plot(t, T_c-T_t);
+hold on
+diff_point = text(t, T_c-T_t, num2str( T_c-T_t));
+xlabel('Time(min)');
+ylabel('delta T');
+title("Temperature Difference")
+subplot(3,1,3);
+
+out_handle = plot(t, output);
+out_point = text(t, output, num2str( output));
+xlabel('Time(min)');
+ylabel('Output to peltier (AU)');
+title("Driver output")
+
+% Initialize stop condition
+stop_plotting = false;
+
+% Set up close request function
+set(fig, 'CloseRequestFcn', @(src, event) closeCallback(src, event));
+
+% Main animation loop
+while ~stop_plotting
+    try
+        % Update data (example: shifting phase of sine wave)
+        r = readline(arduinoPort);
+        d = getValues(r);
+        t(end+1) = d(1)/1000/60;
+        T_c(end+1) = d(2);
+        T_t(end+1) = d(3);
+        output(end+1) = d(4);
+        isH(end+1) = d(5);
+        time(end + 1) = datetime;
+
+
+        % Update plot
+        set(trgt_handle, 'XData', t, 'YData', T_t);
+        set(trgt_point, 'Position', [t(end), T_t(end), 0], 'String', num2str(T_t(end)));
+
+        set(curr_handle, 'XData', t, 'YData', T_c);
+        set(curr_point, 'Position', [t(end), T_c(end), 0], 'String', num2str(T_c(end)));
+
+        set(diff_handle, 'XData', t, 'YData', T_c-T_t);
+        set(diff_point, 'Position', [t(end), T_c(end)-T_t(end), 0], 'String', num2str(T_c(end)-T_t(end)));
+
+        set(out_handle, 'XData', t, 'YData', output);
+        set(out_point, 'Position', [t(end), output(end), 0], 'String', num2str( output(end)));
+
+        % Force drawing update
+        drawnow
+        disp(r);
+        % Small pause to control update rate
+        
+        if isstring(filename)
+            datatable = table(time(end)', t(end)', T_c(end)', T_t(end)', isH(end)', ...
+                'VariableNames', {'Read_time','Time', 'T_c', 'T_t', 'Is_Heating'});
+            writetable(datatable,filename, 'WriteMode','append');
+        end
+
+        if size(t,2) > 8000
+            time = time(2:end);
+            t = t(2:end);
+            T_c = T_c(2:end);
+            T_t = T_t(2:end);
+            isH = isH(2:end);
+            output = output(2:end);
+        end
+    catch
+        data = table(time', t', T_c', T_t', isH', 'VariableNames', {'Read_time','Time', 'T_c', 'T_t', 'Is_Heating'});
+        % Break loop if figure is closed
+        break;
+    end
+end
+
+% Callback function for figure close
+function closeCallback(src, event)
+% Set stop flag
+assignin('base', 'stop_plotting', true);
+% Delete figure
+delete(gcf);
+end
+
+function d = getValues(str)
+% Split the data with commas
+tmp =  split(str," ");
+d = str2double(tmp(1:end-1,1));
+d(end+1) = tmp(end) == "H";
+end
+
+function sendTargetCallback(~,~)
+    % Retrieve stored handles
+    ud = get(gcbf, 'UserData');  % gcbf = get current callback figure
+    targetTemp = str2double(get(ud.targetEdit, 'String'));
+    
+    if ~isnan(targetTemp)
+        configureTerminator(ud.arduinoPort, "CR/LF");
+        %write(ud.arduinoPort, uint8(targetTemp),"char");
+        writeline(ud.arduinoPort, num2str(targetTemp));
+        disp(['Sent new target: ' num2str(targetTemp)]);
+    end
+end
